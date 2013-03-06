@@ -36,12 +36,15 @@ The program key aspects:
 
 #define PORT "3250"   // port we're listening on
 
- using namespace std;
+using namespace std;
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa);
 void sendLong(long guess, int sock);
 void sendMessage(string message, int sock);
+long recieveNum(int clientSock);
+string recieveMessage(int clientSock, long size);
+
 
 int main(void)
 {
@@ -196,7 +199,27 @@ void sendMessage(string message, int sock)
     }
 }
 
-    // sends a long integer
+string recieveMessage(int clientSock, long size)
+{
+
+    int bytesLeft =size;
+    char buffer[size];
+    char *bp = buffer;
+    while(bytesLeft>0){
+
+        int bytesRecv = recv(clientSock,(void*) bp,bytesLeft,0);
+        if(bytesRecv <=0) 
+        {
+            exit(-1);
+        }
+        bytesLeft = bytesLeft - bytesRecv;
+        bp = bp +bytesRecv;
+    }
+    string name = string(buffer);
+    return name;
+}
+
+// sends a long integer
 void sendLong(long guess, int sock)
 {
 
@@ -212,6 +235,31 @@ void sendLong(long guess, int sock)
     }
 }
 
+long recieveNum(int clientSock){
+
+    int bytesLeft = sizeof(long);
+    long numberRecieved ;
+    char *bp = (char*) &numberRecieved;
+    while(bytesLeft>0){
+
+        int bytesRecv = recv(clientSock,(void*) bp,bytesLeft,0);
+        
+        if(bytesRecv <=0) 
+        {
+
+            exit(-1);
+        }
+        bytesLeft = bytesLeft - bytesRecv;
+        bp = bp +bytesRecv;
+    }
+
+
+    numberRecieved = ntohl(numberRecieved);
+
+    return numberRecieved;
+}
+
+
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
@@ -220,3 +268,4 @@ void *get_in_addr(struct sockaddr *sa)
 
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+

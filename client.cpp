@@ -68,8 +68,7 @@ int main(int argc, char *argv[])
 	}
 
 
-
-//send name size and name 
+	//send name size and name 
 
 
 	string userNameStr;
@@ -78,7 +77,6 @@ int main(int argc, char *argv[])
 	cerr << endl;
 	cerr << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
 	cerr<<"It worked!!!!!!!!!"<<endl<<"YAY!"<<endl;
-
 	sendMessage(userNameStr, sock);
 
 	bool inChat = true;
@@ -91,13 +89,7 @@ int main(int argc, char *argv[])
 		M = Send new Message
 		Q = Quit
 		**/
-
-
-
-
 	} 
-
-
 
 //Close connection
 	close(sock);
