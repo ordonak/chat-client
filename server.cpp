@@ -45,7 +45,6 @@ void sendMessage(string message, int sock);
 long recieveNum(int clientSock);
 string recieveMessage(int clientSock, long size);
 
-
 int main(void)
 {
     fd_set master;    // master file descriptor list
@@ -201,7 +200,6 @@ void sendMessage(string message, int sock)
 
 string recieveMessage(int clientSock, long size)
 {
-
     int bytesLeft =size;
     char buffer[size];
     char *bp = buffer;
@@ -222,11 +220,8 @@ string recieveMessage(int clientSock, long size)
 // sends a long integer
 void sendLong(long guess, int sock)
 {
-
     long number = guess;
-
     number = htonl(number);
-
     int bytesSent = send(sock, (void *) &number, sizeof(long), 0);
     if (bytesSent != sizeof(long)) 
     {
@@ -235,34 +230,29 @@ void sendLong(long guess, int sock)
     }
 }
 
-long recieveNum(int clientSock){
-
+long recieveNum(int clientSock)
+{
     int bytesLeft = sizeof(long);
     long numberRecieved ;
     char *bp = (char*) &numberRecieved;
     while(bytesLeft>0){
-
         int bytesRecv = recv(clientSock,(void*) bp,bytesLeft,0);
-        
         if(bytesRecv <=0) 
         {
-
             exit(-1);
         }
         bytesLeft = bytesLeft - bytesRecv;
         bp = bp +bytesRecv;
     }
 
-
     numberRecieved = ntohl(numberRecieved);
-
     return numberRecieved;
 }
 
-
 void *get_in_addr(struct sockaddr *sa)
 {
-    if (sa->sa_family == AF_INET) {
+    if (sa->sa_family == AF_INET) 
+    {
         return &(((struct sockaddr_in*)sa)->sin_addr);
     }
 
