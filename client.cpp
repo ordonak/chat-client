@@ -1,5 +1,9 @@
 //This program acts as a client for a simple chat program
 #define name client
+#include <cstdlib>
+#include <cstdio>
+#include <string.h>
+#include <netdb.h>
 #include <string.h>
 #include <iostream>
 #include <fstream>
@@ -7,6 +11,13 @@
 #include <sys/socket.h> // socket funcs 
 #include <netinet/in.h> // sockaddr_in 
 #include <arpa/inet.h> // htons, inet_pton 
+#include <unistd.h>
+#include <cmath>
+#include <time.h>
+#include <pthread.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 using namespace std;
