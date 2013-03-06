@@ -21,7 +21,7 @@ const int MAX_THREADS = 35;
 const int EXIT_SIGNAL = 2;
 const int OK_CODE = 1;
 const int BAD_CODE = -1;
-const char * SERV_PORT = "13369"
+const char * SERV_PORT = "13369";
 
 //
 vector<int> SOCKET_VECTOR;
@@ -57,7 +57,7 @@ void initializeThreadPool() {
     int rc = pthread_create(&tid, NULL, consumeRequest,
       (void *)(&curr));
     if (rc) {
-      log("ERROR in ThreadPool initialization");
+      //log("ERROR in ThreadPool initialization");
       exit(BAD_CODE);
     }
     pthread_detach(tid);
