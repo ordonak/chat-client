@@ -12,10 +12,10 @@ The program key aspects:
  	large to make log(n) not good enough
  -A vector maintaining the keys in for the map
  	This is used for delivering messages to each chat users inbox
-
-
 **/
 
+#include <cstdlib>
+#include <cstdio>
 #include <string.h>
 #include <netdb.h>
 #include <string.h>
@@ -30,22 +30,20 @@ The program key aspects:
 #include <time.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#define PORT "3000"   // port we're listening on
+#define PORT "3250"   // port we're listening on
 
- 	using namespace std;
+using namespace std;
 
 // get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
+void *get_in_addr(struct sockaddr *sa);
+void sendLong(long guess, int sock);
+void sendMessage(string message, int sock);
+long recieveNum(int clientSock);
+string recieveMessage(int clientSock, long size);
 
 int main(void)
 {
@@ -185,14 +183,13 @@ int main(void)
     return 0;
 }
 
-void sendMessage(string message, int sock){
-
-
+void sendMessage(string message, int sock)
+{
     //send name size
     sendLong(message.size()+1,sock);
 
     //send name
-    char userName[userName.size()+1];
+    char userName[message.size()+1];
     strcpy(userName, message.c_str());
     int bytesSent = send(sock, (void *)&userName, message.size()+1, 0);
     if (bytesSent != message.size()+1) {
@@ -201,20 +198,64 @@ void sendMessage(string message, int sock){
     }
 }
 
-    // sends a long integer
+string recieveMessage(int clientSock, long size)
+{
+    int bytesLeft =size;
+    char buffer[size];
+    char *bp = buffer;
+    while(bytesLeft>0){
+
+        int bytesRecv = recv(clientSock,(void*) bp,bytesLeft,0);
+        if(bytesRecv <=0) 
+        {
+            exit(-1);
+        }
+        bytesLeft = bytesLeft - bytesRecv;
+        bp = bp +bytesRecv;
+    }
+    string name = string(buffer);
+    return name;
+}
+
+// sends a long integer
 void sendLong(long guess, int sock)
 {
-
     long number = guess;
-
     number = htonl(number);
-
     int bytesSent = send(sock, (void *) &number, sizeof(long), 0);
     if (bytesSent != sizeof(long)) 
     {
         cerr<<"Send fail";
         exit(-1);
     }
-
-
 }
+
+long recieveNum(int clientSock)
+{
+    int bytesLeft = sizeof(long);
+    long numberRecieved ;
+    char *bp = (char*) &numberRecieved;
+    while(bytesLeft>0){
+        int bytesRecv = recv(clientSock,(void*) bp,bytesLeft,0);
+        if(bytesRecv <=0) 
+        {
+            exit(-1);
+        }
+        bytesLeft = bytesLeft - bytesRecv;
+        bp = bp +bytesRecv;
+    }
+
+    numberRecieved = ntohl(numberRecieved);
+    return numberRecieved;
+}
+
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) 
+    {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
