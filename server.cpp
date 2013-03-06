@@ -5,17 +5,18 @@ The program key aspects:
  -A map where the keys are equal to all the usernames logged in.  The values are the users current
  inbox.  A client makes a refresh request to the server and the server sends whats in their
  inbox and then clears there inbox
- 		SEARCH,INSERT,DELETE = O(Log(n))
- 		Space = O(n)
- 	This was chosen because it will use far less size then a hash map which seemed overkill 
- 	on this project because the amount of people logged in at once would have to be very
- 	large to make log(n) not good enough
+        SEARCH,INSERT,DELETE = O(Log(n))
+        Space = O(n)
+    This was chosen because it will use far less size then a hash map which seemed overkill 
+    on this project because the amount of people logged in at once would have to be very
+    large to make log(n) not good enough
  -A vector maintaining the keys in for the map
- 	This is used for delivering messages to each chat users inbox
+    This is used for delivering messages to each chat users inbox
+
+
 **/
 
-#include <cstdlib>
-#include <cstdio>
+#include <tr1/unordered_map>
 #include <string.h>
 #include <netdb.h>
 #include <string.h>
@@ -30,23 +31,38 @@ The program key aspects:
 #include <time.h>
 #include <pthread.h>
 #include <sys/time.h>
-#include <sys/wait.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
+#include <vector>
+#define PORT "3000"   // port we're listening on
 
-#define PORT "3250"   // port we're listening on
+    using namespace std;
+void messageParser(string message, int i);
+string recieveMessage(int clientSock);
+void sendLong(long guess, int sock);
+void sendMessage(string userNameStr, int sock);
+ long recieveNum(int clientSock);
+ bool isclosed(int socket);
+     tr1::unordered_map <string, int> activeUsers;
+    vector<string> activeUserKeys;
 
-using namespace std;
 
 // get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa);
-void sendLong(long guess, int sock);
-void sendMessage(string message, int sock);
-long recieveNum(int clientSock);
-string recieveMessage(int clientSock, long size);
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
 
 int main(void)
 {
+
+
+
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number
@@ -120,6 +136,7 @@ int main(void)
     for(;;) {
         read_fds = master; // copy it
         if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+            cerr<<"rro 1"<<endl;
             perror("select");
             exit(4);
         }
@@ -129,7 +146,6 @@ int main(void)
             if (FD_ISSET(i, &read_fds)) { // we got one!!
                 if (i == listener) {
                     // handle new connections
-                    cerr<<"NEW CONNECTION"<<endl;
                     addrlen = sizeof remoteaddr;
                     newfd = accept(listener,
                         (struct sockaddr *)&remoteaddr,
@@ -142,40 +158,51 @@ int main(void)
                         if (newfd > fdmax) {    // keep track of the max
                             fdmax = newfd;
                         }
-                        printf("selectserver: new connection from %s on "
+                        printf("ChatServer: new connection from %s on "
                             "socket %d\n",
                             inet_ntop(remoteaddr.ss_family,
                                 get_in_addr((struct sockaddr*)&remoteaddr),
                                 remoteIP, INET6_ADDRSTRLEN),
                             newfd);
                     }
-                } else {
+                } else if(!isclosed(i)) {
                     // handle data from a client
-                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
-                        // got error or connection closed by client
-                        if (nbytes == 0) {
-                            // connection closed
-                            printf("selectserver: socket %d hung up\n", i);
-                        } else {
-                            perror("recv");
-                        }
+                    string message = recieveMessage(i);
+                    cerr<<"text recieved:"<< message<<endl;
+                    messageParser(message , i);
+                    // if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
+                    //     // got error or connection closed by client
+                    //     if (nbytes == 0) {
+                    //         // connection closed
+                    //         printf("ChatServer: socket %d hung up\n", i);
+                    //     } else {
+                    //         perror("recv");
+                    //     }
+                    //     close(i); // bye!
+                    //     FD_CLR(i, &master); // remove from master set
+                    // } else {
+                    //     // we got some data from a client
+                    //     for(j = 0; j <= fdmax; j++) {
+                    //         // send to everyone!
+                    //         if (FD_ISSET(j, &master)) {
+                    //             // except the listener and ourselves
+                    //             if (j != listener && j != i) {
+                    //                 //long temp = sizeOf(buff);
+                    //                 sendLong(sizeof(buf),j);
+                    //                 if (send(j, buf, nbytes, 0) == -1) {
+                    //                     perror("send");
+                    //                 }
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                }else{
+                    printf("ChatServer: socket %d hung up\n", i);
                         close(i); // bye!
                         FD_CLR(i, &master); // remove from master set
-                    } else {
-                        // we got some data from a client
-                        for(j = 0; j <= fdmax; j++) {
-                            // send to everyone!
-                            if (FD_ISSET(j, &master)) {
-                                // except the listener and ourselves
-                                if (j != listener && j != i) {
-                                    if (send(j, buf, nbytes, 0) == -1) {
-                                        perror("send");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } // END handle data from client
+
+                } 
+                // END handle data from client
             } // END got new incoming connection
         } // END looping through file descriptors
     } // END for(;;)--and you thought it would never end!
@@ -183,24 +210,11 @@ int main(void)
     return 0;
 }
 
-void sendMessage(string message, int sock)
+string recieveMessage(int clientSock)
 {
-    //send name size
-    sendLong(message.size()+1,sock);
-
-    //send name
-    char userName[message.size()+1];
-    strcpy(userName, message.c_str());
-    int bytesSent = send(sock, (void *)&userName, message.size()+1, 0);
-    if (bytesSent != message.size()+1) {
-        cerr<<"Send fail";
-        exit(-1);
-    }
-}
-
-string recieveMessage(int clientSock, long size)
-{
-    int bytesLeft =size;
+    
+    long size = recieveNum(clientSock);
+    int bytesLeft = size;
     char buffer[size];
     char *bp = buffer;
     while(bytesLeft>0){
@@ -213,49 +227,99 @@ string recieveMessage(int clientSock, long size)
         bytesLeft = bytesLeft - bytesRecv;
         bp = bp +bytesRecv;
     }
-    string name = string(buffer);
+    string name = string(buffer,size);
     return name;
 }
 
-// sends a long integer
-void sendLong(long guess, int sock)
-{
-    long number = guess;
-    number = htonl(number);
-    int bytesSent = send(sock, (void *) &number, sizeof(long), 0);
-    if (bytesSent != sizeof(long)) 
-    {
-        cerr<<"Send fail";
-        exit(-1);
-    }
-}
+void sendMessage(string message, int sock){
 
-long recieveNum(int clientSock)
-{
+    //send name size
+    sendLong(message.size(),sock);
+    //send name
+    char userName[message.size()];
+    strcpy(userName, message.c_str());
+    int bytesSent = send(sock, (void *)&userName, message.size(), 0);
+    if (bytesSent != message.size()) {
+        cerr<<"Send fail";
+        exit(-1);}
+    }
+
+    // sends a long integer
+    void sendLong(long guess, int sock)
+    {
+
+        long number = guess;
+
+        number = htonl(number);
+
+        int bytesSent = send(sock, (void *) &number, sizeof(long), 0);
+        if (bytesSent != sizeof(long)) 
+        {
+            cerr<<"Send fail";
+            exit(-1);
+        }
+
+
+    }
+    long recieveNum(int clientSock){
+
     int bytesLeft = sizeof(long);
     long numberRecieved ;
     char *bp = (char*) &numberRecieved;
     while(bytesLeft>0){
+
         int bytesRecv = recv(clientSock,(void*) bp,bytesLeft,0);
+        
         if(bytesRecv <=0) 
         {
+
             exit(-1);
         }
         bytesLeft = bytesLeft - bytesRecv;
         bp = bp +bytesRecv;
     }
 
+
     numberRecieved = ntohl(numberRecieved);
+
     return numberRecieved;
 }
 
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) 
-    {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
 
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+void messageParser(string message,int i)
+{
+    //Check if user is client is trying to register a new user
+
+    if(message.find("<login>") != std::string::npos)
+    {
+       string extractedUserName =  message.substr(message.find("<login>")+strlen("<login>"),string::npos);
+       tr1::unordered_map<string,int>::const_iterator findResult = activeUsers.find (extractedUserName);
+
+       if(findResult != activeUsers.end())
+        {
+            sendMessage("Sorry That User Name is Taken", i);
+
+        }else{
+       activeUsers.insert(std::make_pair<std::string,int>(extractedUserName,i)); 
+       activeUserKeys.push_back(extractedUserName);
+
+        sendMessage("you are now logged in as: " + extractedUserName, i);
+    }
+    }else {
+sendMessage(message, i);
+    }
+}
+
+bool isclosed(int sock) {
+  fd_set rfd;
+  FD_ZERO(&rfd);
+  FD_SET(sock, &rfd);
+  timeval tv = { 0 };
+  select(sock+1, &rfd, 0, 0, &tv);
+  if (!FD_ISSET(sock, &rfd))
+    return false;
+  int n = 0;
+  ioctl(sock, FIONREAD, &n);
+  return n == 0;
 }
 
