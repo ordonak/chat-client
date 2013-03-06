@@ -1,17 +1,18 @@
 # Makefile
 
 CC = g++ -w
-PTHREAD = -pthread
+LIBS = -pthread -lncurses
 
-c-server: c-server.cpp
-	g++ -g -o c-server c-server.cpp $(PTHREAD)
+
+all: server client
+
+server: server.cpp
+	g++ -g -o server server.cpp $(LIBS)
  
-c-client: c-client.cpp
-	g++ -g -o c-client c-client.cpp $(PTHREAD)
+client: client.cpp
+	g++ -g -o client client.cpp $(LIBS)
 
-all:
-	$(CC) -g -o c-client.cpp proxy.cpp $(PTHREAD)
 
 clean:
-	rm -f *.o c-client
-	rm -f *.o c-server
+	rm -f *.o client
+	rm -f *.o server
