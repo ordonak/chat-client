@@ -61,9 +61,6 @@ void *get_in_addr(struct sockaddr *sa)
 
 int main(void)
 {
-
-
-
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number

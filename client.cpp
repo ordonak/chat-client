@@ -53,6 +53,7 @@ void sendLong(long guess, int sock);
 long recieveNum(int clientSock);
 string parseMessage(string mess, bool& userL);
 vector<string> parseUsers(string newUsers);
+string createMessage(string toSend);
 
 
 //Ncurses functions
