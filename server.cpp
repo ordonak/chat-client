@@ -18,6 +18,7 @@ The program key aspects:
 
 #include <tr1/unordered_map>
 #include <string.h>
+#include <cstdlib>
 #include <netdb.h>
 #include <string.h>
 #include <iostream>
@@ -37,15 +38,15 @@ The program key aspects:
 #include <vector>
 #define PORT "3000"   // port we're listening on
 
-    using namespace std;
+using namespace std;
 void messageParser(string message, int i);
 string recieveMessage(int clientSock);
 void sendLong(long guess, int sock);
 void sendMessage(string userNameStr, int sock);
- long recieveNum(int clientSock);
- bool isclosed(int socket);
-     tr1::unordered_map <string, int> activeUsers;
-    vector<string> activeUserKeys;
+long recieveNum(int clientSock);
+bool isclosed(int socket);
+tr1::unordered_map <string, int> activeUsers;
+vector<string> activeUserKeys;
 
 
 // get sockaddr, IPv4 or IPv6:
