@@ -53,8 +53,7 @@ void sendLong(long guess, int sock);
 long recieveNum(int clientSock);
 string parseMessage(string mess, bool& userL);
 vector<string> parseUsers(string newUsers);
-string createMessage(string toSend);
-
+string createMessage(string message);
 
 //Ncurses functions
 void initCurses(WIN userWindow);
@@ -77,7 +76,7 @@ static connInfo cInfo;
 static char *IPAddr = "10.124.72.20";
 static unsigned short PORT_NUMBER = 10105;
 static int LEADERBOARD_SLOTS = 3;
-static string userName;
+static string userName = "";
 string sharedMess="";
 static bool updated = false;
 vector<string> userList;
@@ -110,15 +109,12 @@ int main(int argc, char *argv[])
         bool loggedIn = false;
         while(inChat)
         {
-        	if(!loggedIn)
-        	{
-        		cerr << "Please login: ";
-        		getline(std::cin,userName);
-        		sendMessage("<login>"+userName, cInfo.sock);
-        		loggedIn = false;
-        	}
-
-            cerr << endl <<"Send a message:" << endl;
+            if(!loggedIn){
+                cerr << "Please log in with your username: ";
+                getline(std::cin,userName);
+                sendMessage("<login>"+userName);
+            }
+            cerr << "Send a message:" << endl;
             string message;
             getline(std::cin,message);
             if(message != "r"){
@@ -207,7 +203,6 @@ int acceptConnection(int sockNumber)
         &clientAddr, &addrLen);
     if (clientSock < 0)
         exit(-1);
-
     return clientSock;
 }
 
@@ -322,17 +317,20 @@ vector<string> parseUsers(string newUsers){
     return userList;
 }
 
-string createMessage(string toSend){
-	int recipeStart = toSend.find("@")+1;
-	int recipeEnd = toSend.find(" ");
-	int msgStart = toSend.find(" ")+1;
+string createMessage(string message)
+{
+    int recipStart = mess.find("@")+strlen("@");
+    int recipEnd = mess.find(" ");
 
-	string recipient = toSend.substr(recipeStart, (recipeEnd-recipeStart));
-	string msg = toSend.substr(msgStart, (string::npos-msgStart));
-	string readyMessage;
+    int msgStart = message.find(" ")+1;
 
-	readyMessage = "<sendto>"+recipient+"</sendto>"+"<from>"
-		+userName+"</from>"+"<msg>"+msg+"</msg>";
+    string author = message.substr(recipStart,(recipEnd-recipStart));
+    string msg = message.subStr(msgStart,string::npos);
+
+    string toSend= "<sendto>"+author+"</sendto>"
+        +"<from>"+userName+"</from>"+"<msg>"+msg+"</msg>";
+
+    return toSend;
 }
 
 

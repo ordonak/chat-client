@@ -18,7 +18,6 @@ The program key aspects:
 
 #include <tr1/unordered_map>
 #include <string.h>
-#include <cstdlib>
 #include <netdb.h>
 #include <string.h>
 #include <iostream>
@@ -38,15 +37,21 @@ The program key aspects:
 #include <vector>
 #define PORT "3000"   // port we're listening on
 
-using namespace std;
-void messageParser(string message, int i);
-string recieveMessage(int clientSock);
-void sendLong(long guess, int sock);
-void sendMessage(string userNameStr, int sock);
-long recieveNum(int clientSock);
-bool isclosed(int socket);
-tr1::unordered_map <string, int> activeUsers;
-vector<string> activeUserKeys;
+    using namespace std;
+    void messageParser(string message, int i);
+    string recieveMessage(int clientSock);
+    void sendLong(long guess, int sock);
+    void sendMessage(string userNameStr, int sock);
+    long recieveNum(int clientSock);
+    bool isclosed(int socket);
+    void showUsers();
+    void sendListOfUsers();
+    void sendLogon(string extractedUserName);
+    void logoutUser(int fd);
+    tr1::unordered_map <string, int> activeUsers;
+    tr1::unordered_map <int, string> activeLogins;
+    vector<string> activeUserKeys;
+    void sendLogoff(string extractedUserName);
 
 
 // get sockaddr, IPv4 or IPv6:
@@ -61,6 +66,9 @@ void *get_in_addr(struct sockaddr *sa)
 
 int main(void)
 {
+
+
+
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number
@@ -168,36 +176,14 @@ int main(void)
                     string message = recieveMessage(i);
                     cerr<<"text recieved:"<< message<<endl;
                     messageParser(message , i);
-                    // if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
-                    //     // got error or connection closed by client
-                    //     if (nbytes == 0) {
-                    //         // connection closed
-                    //         printf("ChatServer: socket %d hung up\n", i);
-                    //     } else {
-                    //         perror("recv");
-                    //     }
-                    //     close(i); // bye!
-                    //     FD_CLR(i, &master); // remove from master set
-                    // } else {
-                    //     // we got some data from a client
-                    //     for(j = 0; j <= fdmax; j++) {
-                    //         // send to everyone!
-                    //         if (FD_ISSET(j, &master)) {
-                    //             // except the listener and ourselves
-                    //             if (j != listener && j != i) {
-                    //                 //long temp = sizeOf(buff);
-                    //                 sendLong(sizeof(buf),j);
-                    //                 if (send(j, buf, nbytes, 0) == -1) {
-                    //                     perror("send");
-                    //                 }
-                    //             }
-                    //         }
-                    //     }
-                    // }
+                    showUsers();
+               
                 }else{
                     printf("ChatServer: socket %d hung up\n", i);
                         close(i); // bye!
                         FD_CLR(i, &master); // remove from master set
+                        logoutUser(i);
+                        showUsers();
 
                 } 
                 // END handle data from client
@@ -290,24 +276,183 @@ void messageParser(string message,int i)
 
     if(message.find("<login>") != std::string::npos)
     {
-       string extractedUserName =  message.substr(message.find("<login>")+strlen("<login>"),string::npos);
-       tr1::unordered_map<string,int>::const_iterator findResult = activeUsers.find (extractedUserName);
 
-       if(findResult != activeUsers.end())
+        int userStart = message.find("<login>")+strlen("<login>");
+        int userEnd = message.find("</login>");
+       string extractedUserName =  message.substr(userStart,userEnd-userStart);
+       tr1::unordered_map<string,int>::const_iterator activeUsersFindResult = activeUsers.find (extractedUserName);
+       if(activeUsersFindResult != activeUsers.end())
         {
-            sendMessage("Sorry That User Name is Taken", i);
+           sendMessage("<from>SYSTEM</from><deny>",i);
 
-        }else{
-       activeUsers.insert(std::make_pair<std::string,int>(extractedUserName,i)); 
-       activeUserKeys.push_back(extractedUserName);
+        }else if(activeLogins.find(i) == activeLogins.end() )  //Check if user is logged in
+        {
+        activeUsers.insert(std::make_pair<std::string,int>(extractedUserName,i)); 
+        activeLogins.insert(std::make_pair<int,string>(i,extractedUserName)); 
+        activeUserKeys.push_back(extractedUserName);
+        cerr<<"<from>SYSTEM</from><confirm>"<<endl;
+        sendMessage("<from>SYSTEM</from><confirm>", i);
 
-        sendMessage("you are now logged in as: " + extractedUserName, i);
-    }
-    }else {
-sendMessage(message, i);
+        sendListOfUsers();
+        }
+        else
+        {
+        sendMessage("<from>SYSTEM</from><deny>" , i);
+        }
+    }else if ((message.find("<sendto>") != string::npos) ) //Check if they are trying to send a message
+    {
+        //Find mark ups start and end positions
+        int recipeintStart = message.find("<sendto>")+strlen("<sendto>");
+        int recipeintEnd = message.find("</sendto>");
+        int authorStart = message.find("<from>")+strlen("<from>");
+        int authortEnd = message.find("</from>");
+        int msgStart = message.find("<msg>");
+        int msgEnd = message.find("</msg>"+strlen("</msg>"));
+
+        //Parse our data given the markup start and end points
+       string recipeint =  message.substr(recipeintStart,(recipeintEnd-recipeintStart));
+       string author = message.substr(authorStart,(authortEnd-authorStart));
+       string msg = message.substr(msgStart,(msgEnd-msgStart));
+       
+       //Check if user exists and grab their socket number
+        tr1::unordered_map<string,int>::const_iterator recipientSocketIter = activeUsers.find(recipeint);
+        if(recipientSocketIter != activeUsers.end()){
+        int recipeintSocket = (*recipientSocketIter).second; 
+        cerr<<"Sending message to:"<<recipeint<<" From:"<<author<<endl;
+       sendMessage(message, recipeintSocket);
+        }else
+        {
+            sendMessage("<sendto>" + author + "</sendto><from>SYSTEM</from><msg>Sorry we couldn't find that user :(</msg>", i);
+        }
+//<sendto>Russell</sendto><from>Ken</from><msg>Yo it worked bitch!</msg>
+    }else
+    {
+        cerr<<message<<endl<<"User was not logged in"<<endl;
+    //sendMessage(message, i);
     }
 }
 
+void sendListOfUsers()
+{
+    //cerr<<"Users Currently Logged On:"<<endl;
+
+ 
+    for (int count = 0 ; count < activeUserKeys.size() ; count++)
+    {
+    tr1::unordered_map<string,int>::const_iterator recipientSocketIter = activeUsers.find(activeUserKeys[count]);
+        if(recipientSocketIter != activeUsers.end())
+        {
+            string author = (*recipientSocketIter).first;
+            int recipeintSocket = (*recipientSocketIter).second; 
+
+             for (int count = 0 ; count < activeUserKeys.size() ; count++)
+            {
+                cerr<<"SENDING:"<<"<logon>" << activeUserKeys[count] <<"</logon> to:"<<author<<endl;
+                 sendMessage("<logon>" + activeUserKeys[count] + "</logon>", recipeintSocket);
+            }
+
+           
+        }else
+        {
+        cerr<<"Error Deliverying List Of Users"<<endl;
+        }
+    }
+}
+
+void sendLogon(string name)
+{
+        //cerr<<"Users Currently Logged On:"<<endl;
+    string userListMsg = "<logon>";
+    userListMsg.append(name);
+    userListMsg.append("</logon>");
+    //cerr<<userListMsg;
+    for (int count = 0 ; count < activeUserKeys.size() ; count++)
+    {
+    tr1::unordered_map<string,int>::const_iterator recipientSocketIter = activeUsers.find(activeUserKeys[count]);
+        if(recipientSocketIter != activeUsers.end())
+        {
+            string author = (*recipientSocketIter).first;
+            int recipeintSocket = (*recipientSocketIter).second; 
+            sendMessage(userListMsg, recipeintSocket);
+        }else
+        {
+        cerr<<"Error Deliverying List Of Users"<<endl;
+        }
+    }
+
+
+}
+
+void sendLogonOff(string name)
+{
+        //cerr<<"Users Currently Logged On:"<<endl;
+    string userListMsg = "<logoff>";
+    userListMsg.append(name);
+    userListMsg.append("</logoff>");
+    //cerr<<userListMsg;
+    for (int count = 0 ; count < activeUserKeys.size() ; count++)
+    {
+    tr1::unordered_map<string,int>::const_iterator recipientSocketIter = activeUsers.find(activeUserKeys[count]);
+        if(recipientSocketIter != activeUsers.end())
+        {
+            string author = (*recipientSocketIter).first;
+            int recipeintSocket = (*recipientSocketIter).second; 
+            sendMessage(userListMsg, recipeintSocket);
+        }else
+        {
+        cerr<<"Error Deliverying List Of Users"<<endl;
+        }
+    }
+
+
+}
+
+void logoutUser(int fd)
+{
+
+       // tr1::unordered_map <string, int> activeUsers;
+    //tr1::unordered_map <int, string> activeLogins;
+    //vector<string> activeUserKeys;
+    string userName;
+    tr1::unordered_map<int,string>::const_iterator activeLoginsFindResult = activeLogins.find (fd);
+    if(activeLoginsFindResult != activeLogins.end())
+    {
+        userName = (*activeLoginsFindResult).second; 
+        cerr<<userName<<"Is LOGGING OFF!"<<endl;
+        activeLogins.erase(fd);
+
+        
+
+          tr1::unordered_map<string,int>::const_iterator activeUsersFindResult = activeUsers.find (userName);
+    if(activeUsersFindResult != activeUsers.end())
+    {
+        activeUsers.erase(userName);
+        sendLogonOff(userName);
+    }
+    int userNameIndex;
+    for(int count = 0 ; count < activeUserKeys.size() ; count++)
+    {
+        if(activeUserKeys[count].compare(userName)==0)
+        {
+            userNameIndex = count;
+
+        }
+    }
+
+
+    activeUserKeys.erase(activeUserKeys.begin() + userNameIndex);
+
+    }
+
+  
+}
+
+void showUsers()
+{
+    cerr<<"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nUsers Currently Logged On:"<<endl;
+    for (int count = 0 ; count<activeUserKeys.size();count++)
+        cerr<<activeUserKeys[count]<<endl;
+}
 bool isclosed(int sock) {
   fd_set rfd;
   FD_ZERO(&rfd);
@@ -320,4 +465,3 @@ bool isclosed(int sock) {
   ioctl(sock, FIONREAD, &n);
   return n == 0;
 }
-
