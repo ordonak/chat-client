@@ -1,6 +1,5 @@
 //This program acts as a client for a simple chat program
 #define name client
-#include <cstdlib>
 #include <cstdio>
 #include <string.h>
 #include <netdb.h>
@@ -8,6 +7,7 @@
 #include <list>
 #include <vector>
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <sys/types.h> // size_t, ssize_t 
 #include <sys/socket.h> // socket funcs 
@@ -25,18 +25,6 @@
 
 using namespace std;
 
-//Window Structs
-typedef struct _win_border_struct {
-    chtype  ls, rs, ts, bs, 
-    tl, tr, bl, br;
-}WIN_BORDER;
-
-typedef struct _WIN_struct {
-
-    int startx, starty;
-    int height, width;
-    WIN_BORDER border;
-}WIN;
 
 struct connInfo{
     int sock;
@@ -51,45 +39,50 @@ string recieveMessage(int clientSock);
 void sendMessage(string message, int sock);
 void sendLong(long guess, int sock);
 long recieveNum(int clientSock);
-string parseMessage(string mess, bool& userL);
+bool parseMessage(string mess);
 vector<string> parseUsers(string newUsers);
-string createMessage(string message);
-
-//Ncurses functions
-void initCurses(WIN userWindow);
-void init_win_params(WIN *p_win);
-void print_win_params(WIN *p_win);
-void create_box(WIN *p_win, bool flag);
-WINDOW *create_newwin(int height, int width, int starty, int startx);
-void destroy_win(WINDOW *local_win);
-void update_scr(WINDOW * userWindow);
+string getUser();
+string createMessage(string toSend);
+void sendToCurrentUser(string message);
+void toggleUpdate(bool expression);
+void login();
+void addMessage(string user, string msg,string from);
+void addUser(string name);
+void removeUser(string oldUser);
+void displayUserList(int pRow,int pCol, int selected);
+void printConvo(string user);
+void renderCommandLine(int x, int y);
 
 
 //THREAD FUNCTIONS
-
 void createConn();
-void * uiThread(void * info);
 void * connThread(void * info);
 
-
+//Global var
+string currentConvo="0";
 static connInfo cInfo;
 static char *IPAddr = "10.124.72.20";
 static unsigned short PORT_NUMBER = 10105;
 static int LEADERBOARD_SLOTS = 3;
-static string userName = "";
+static string userName;
 string sharedMess="";
+string sendToUser="";
+string fromUser = "";
+string inputPrompt = "";
+string commandLine;
 static bool updated = false;
-vector<string> userList;
-
+vector<pair<string, string> > userList;
+bool loggedIn = false;
+bool waiting = true;
+int mode = 0;
+int const LIST = 0;
+int const CONVO = 1;
 //Synchronization variables
 pthread_mutex_t MESSAGE_LOCK;
 
 
 int main(int argc, char *argv[])
 {
-    WIN userWindow;
-    WINDOW* userWind;
-    WINDOW* chatWind;
 
     if(argc!=3)
         cerr<<"Usage ./client IP_ADDRESS PORT_NUMBER"<<endl;
@@ -103,44 +96,158 @@ int main(int argc, char *argv[])
         PORT_NUMBER = strtoul(argv[2],NULL,0);
         cInfo.sock = createTCPSocket();
         createConn();
-        
-        //send name size and name 
+        int keyPressed;
         bool inChat = true;
-        bool loggedIn = false;
+        //send name size and name 
+
+        //initializing nCurses
+        initscr();
+        cbreak();
+        nodelay(stdscr,TRUE);
+        keypad(stdscr, TRUE);
+
+        wchar_t f1checker;
+        
+        int row,col;
+        scrollok(stdscr,true);
+        login();
+
+        getUser();
+        toggleUpdate(true);
+        noecho();
         while(inChat)
         {
-            if(!loggedIn){
-                cerr << "Please log in with your username: ";
-                getline(std::cin,userName);
-                sendMessage("<login>"+userName);
-            }
-            cerr << "Send a message:" << endl;
-            string message;
-            getline(std::cin,message);
-            if(message != "r"){
-                sendMessage(message, cInfo.sock);
-            }
-            if(updated){
-                cerr << sharedMess <<endl;
-                pthread_mutex_lock(&MESSAGE_LOCK);
-                updated = false;
-                pthread_mutex_unlock(&MESSAGE_LOCK);
-                sharedMess = "";
+            
+            if ((keyPressed = getch()) == ERR) {
+             //user hasn't responded
+                if(updated)
+                {
+                    clear();
+                    getmaxyx(stdscr,row,col);       /* get the number of rows and columns */
+                    char *display = (char*)sharedMess.c_str();
+                    printw(display);
+                    if(mode == CONVO)
+                    {
+                        printConvo(currentConvo);
+                        printw(string(userName+":").c_str());
+                    }
+                    toggleUpdate(false);
+                    sharedMess = "";
+                }
+            }else
+            {
+                    //pull up userList if F1 pressed
+                if(keyPressed==KEY_F(1))
+                {
+                    getUser();
+                    toggleUpdate(true);
+                    commandLine.clear();
+                }else if ( keyPressed == KEY_BACKSPACE)  // detect backspace
+                {
+                    if(commandLine.size()>=1)
+                    {
+                        commandLine.erase(commandLine.size() - 1);
+                        clear();
+                        if(mode == CONVO)
+                        {
+                        printConvo(currentConvo);
+                        printw(string(userName + ":" + commandLine).c_str());
+                        }else
+                        {
+                            printw(commandLine.c_str());
+                        }
+                    }
+
+                }
+                else if(keyPressed != '\n')
+                {
+                    commandLine += keyPressed;
+                    clear();
+                    if(mode == CONVO)
+                    {
+                        printConvo(currentConvo);
+                        printw(string(userName + ":" + commandLine).c_str());
+                    }else
+                    {
+                        printw(commandLine.c_str());
+                    }
+                }
+                else 
+                {
+                    sendToCurrentUser(commandLine);
+                    commandLine.clear();
+                }
             }
         }
         //Close connection
         close(cInfo.sock);
+        endwin();
     }
 }
 
-void createConn()
+
+void convoMode()
 {
-    pthread_t connID;
+
+
+}
+
+void renderCommandLine(int x, int y)
+{
+
+}
+
+void sendToCurrentUser(string message)
+{
+    string msg = createMessage(message);
+    string fromSigniture ="<from>"+userName+"</from>";
+    string toSigniture = "<sendto>"+currentConvo+"</sendto>";
+    sendMessage(toSigniture+fromSigniture+msg, cInfo.sock);
+    addMessage(currentConvo,message, userName);
+    toggleUpdate(true);
+
+}
+
+void login()
+{
+    char keyPressed;
+    string temp;
+    string returnMess;
+    printw("Please log in:");
+       while(!loggedIn){
+                if ((keyPressed = getch()) == ERR){
+
+                }
+                else{
+                    if(keyPressed != '\n')
+                        temp+= keyPressed;
+                    else{
+                        userName=temp;
+                        fromUser="<from>"+userName+"</from>";
+                        sendMessage("<login>"+userName, cInfo.sock);
+                        while(waiting)
+                        {
+                            
+                        }
+                        clear();
+                        printw(string("Sorry the username \""+temp+"\" has been taken\n").c_str());
+                        temp.clear();
+                        printw("Please log in with a different name:");
+                    }
+
+                }
+            }
+    clear();
+
+}
+
+void createConn()
+{   pthread_t connID;
 
     int rc = pthread_create(&connID, NULL, connThread, 
         NULL);
     if(rc){
-        cerr << "ERROR with CONN thread." << endl;
+        //cerr << "ERROR with CONN thread." << endl;
         exit(-1);
     }
 }
@@ -150,9 +257,8 @@ void * connThread(void * info){
     //Convert dotted decimal address to int unsigned long servIP;
     unsigned long servIP;
     int status = inet_pton(AF_INET, IPAddr, &servIP); 
-    
+
     if (status <= 0) exit(-1);
-    bool uList = false;
     // Set the fields
     struct sockaddr_in servAddr; 
     servAddr.sin_family = AF_INET; // always AF_INET 
@@ -162,21 +268,16 @@ void * connThread(void * info){
     status = connect(cInfo.sock, (struct sockaddr *) &servAddr, sizeof(servAddr));
     if (status < 0) 
     {
-        cerr << "Error with connect" << endl;
+        //cerr << "Error with connect" << endl;
         exit (-1);
     }
     while(true){
         string mess = recieveMessage(cInfo.sock);
-        sharedMess = parseMessage(mess, uList);
-        cerr << "New messages have come-in(input just r to refresh.)" << endl;
-        if(uList){
-            userList = parseUsers(sharedMess);
-            uList = new bool;
-        }
-        else{
-            pthread_mutex_lock(&MESSAGE_LOCK);
-            updated = true;
-            pthread_mutex_unlock(&MESSAGE_LOCK);
+        bool gotRealData = parseMessage(mess);
+        //cerr << "New messages have come-in(input just r to refresh.)" << endl;
+        if(gotRealData)
+        {
+           toggleUpdate(true);
         }
     }
 }
@@ -193,6 +294,14 @@ int createTCPSocket()
     return sock;
 }
 
+void toggleUpdate(bool expression)
+    {
+        pthread_mutex_lock(&MESSAGE_LOCK);
+            updated = expression;
+        pthread_mutex_unlock(&MESSAGE_LOCK);
+
+    }
+
 
         //Accept connection with given sock number
 int acceptConnection(int sockNumber)
@@ -203,6 +312,7 @@ int acceptConnection(int sockNumber)
         &clientAddr, &addrLen);
     if (clientSock < 0)
         exit(-1);
+
     return clientSock;
 }
 
@@ -278,165 +388,255 @@ long recieveNum(int clientSock){
     return numberRecieved;
 }
 
-string parseMessage(string mess, bool& userL){
-    if(mess.find("<userList>")!= string::npos){
-    userL = true;
-    string userList = mess.substr(mess.find("<userList>")
-        +mess.find(strlen("</userList>")));
-    
-        return userList;
+bool parseMessage(string mess)
+{
+    if(mess.find("<logon>")!= string::npos ) //User is logging in
+    {
+        int userStart = mess.find("<logon>")+strlen("<logon>");
+        int userEnd = mess.find("</logon>");
+        string extractedUser =  mess.substr(userStart,userEnd-userStart);
+
+       addUser(extractedUser);
+        return true;
+
+    }else if(mess.find("<logoff>")!= string::npos) //User is logging off
+    {
+        int userStart = mess.find("<logoff>")+strlen("<logoff>");
+        int userEnd = mess.find("</logoff>");
+        string extractedUser =  mess.substr(userStart,userEnd-userStart);
+        removeUser(extractedUser);
+        return true;
+    }
+    else if(mess.find("<confirm>")!= string::npos) //User is logging off
+    {
+        loggedIn = true;
+        waiting = false;
+        return true;
+    }
+    else if(mess.find("<deny>")!= string::npos)
+    {
+        loggedIn = false;
+        waiting = false;
+        return true;
     }
 
-    else{
+    else if (mess.find("<from>")!= string::npos){
         int authorStart = mess.find("<from>")+strlen("<from>");
         int authorEnd = mess.find("</from>");
 
         int msgStart = mess.find("<msg>")+strlen("<msg>");
         int msgEnd = mess.find("</msg>");
 
-        cerr << "Whole message: " << mess << endl;
         string author = mess.substr(authorStart,(authorEnd-authorStart));
         string sentMess = mess.substr(msgStart, (msgEnd-msgStart));
-        cerr<< endl << author<<": " << sentMess << endl;
-        return(author + ": " + sentMess);
-    }
-}
-
-
-vector<string> parseUsers(string newUsers){
-    vector<string> userList;
-    char *str =  new char[newUsers.length()+1];
-    strcpy(str, newUsers.c_str());
-    char *tok;
-    tok = strtok(str,"\n");
-    while(tok != NULL)
+       addMessage(author,sentMess,author);
+        return true;
+    }else
     {
-        userList.push_back(string(tok));
-        tok = strtok(str, "\n");
+        return false;
     }
-    return userList;
+
+
 }
 
-string createMessage(string message)
-{
-    int recipStart = mess.find("@")+strlen("@");
-    int recipEnd = mess.find(" ");
+    void addUser(string newUser)
+    {
+        
+        bool addToList = true;
+         if(newUser.compare(userName) == 0)
+            {
 
-    int msgStart = message.find(" ")+1;
+                 addToList = false;
+                //if you are this user do nothing?
+            }
+        for(int i = 0; i < userList.size(); i++)
+        {
+           if(newUser.compare( userList[i].first)==0)
+             {
+                //if the user is already in our list of conversations
+                addToList = false;
 
-    string author = message.substr(recipStart,(recipEnd-recipStart));
-    string msg = message.subStr(msgStart,string::npos);
-
-    string toSend= "<sendto>"+author+"</sendto>"
-        +"<from>"+userName+"</from>"+"<msg>"+msg+"</msg>";
-
-    return toSend;
-}
-
-
-void initCurses(WIN userWindow)
-{
-    initscr();
-    keypad(stdscr, TRUE);
-    start_color();
-    init_pair(1, COLOR_CYAN, COLOR_BLACK);
-
-    //init_win_params(&userWindow);
-    //print_win_params(&userWindow);
-    attron(COLOR_PAIR(1));
-    //create_box(&userWindow, true);
-    refresh();
-}
-
-void init_win_params(WIN *p_win)
-{
-    p_win->height = LINES;
-    p_win->width = 20;
-    p_win->starty = 0;  
-    p_win->startx = 0;
-    p_win->border.ls = '|';
-    p_win->border.rs = '|';
-    p_win->border.ts = '-';
-    p_win->border.bs = '-';
-    p_win->border.tl = '+';
-    p_win->border.tr = '+';
-    p_win->border.bl = '+';
-    p_win->border.br = '+';
-
-}
-void print_win_params(WIN *p_win)
-{
-#ifdef _DEBUG
-    mvprintw(25, 0, "%d %d %d %d", p_win->startx, p_win->starty, 
-        p_win->width, p_win->height);
-    refresh();
-#endif
-}
-void create_box(WIN *p_win, bool flag)
-{   int i, j;
-    int x, y, w, h;
-
-    x = p_win->startx;
-    y = p_win->starty;
-    w = p_win->width;
-    h = p_win->height;
-
-    if(flag == TRUE)
-        {   mvaddch(y, x, p_win->border.tl);
-            mvaddch(y, x + w, p_win->border.tr);
-            mvaddch(y + h, x, p_win->border.bl);
-            mvaddch(y + h, x + w, p_win->border.br);
-            mvhline(y, x + 1, p_win->border.ts, w - 1);
-            mvhline(y + h, x + 1, p_win->border.bs, w - 1);
-            mvvline(y + 1, x, p_win->border.ls, h - 1);
-            mvvline(y + 1, x + w, p_win->border.rs, h - 1);
+            }
+         }
+         if(addToList){
+          userList.push_back(pair<string,string>(newUser,""));
 
         }
-        else
-            for(j = y; j <= y + h; ++j)
-                for(i = x; i <= x + w; ++i)
-                    mvaddch(j, i, ' ');
-                
-                refresh();
 
-            }
+    }
 
-            void update_scr(WINDOW* userWindow)
+    void addMessage(string user, string msg, string from)
+    {
+
+        for(int i = 0; i < userList.size(); i++)
+        {
+            if(user.compare(userName)==0)
             {
-                mvwprintw(userWindow, 2,2, "Users");
-                refresh();
+                //if you are this user do nothing?
+             }else if(user.compare(userList[i].first)==0)
+             {
+                //append message to user string
+                userList[i].second.append(from+":"+msg + "\n");
+
+             }else{
+
+                //do nothing?  user doesnt exists
             }
 
-            WINDOW *create_newwin(int height, int width, int starty, int startx)
-            {   WINDOW *local_win;
+        }
 
-                local_win = newwin(height, width, starty, startx);
-    box(local_win, 0 , 0);      /* 0, 0 gives default characters 
-                     * for the vertical and horizontal
-                     * lines            */
-    wrefresh(local_win);        /* Show that box        */
+    }
 
-                     return local_win;
+    void printConvo(string user)
+    {
+  
+  
+        for(int i = 0; i < userList.size(); i++)
+        {
+            if(user.compare(userList[i].first)==0)
+            {
+                //append message to user string
+                printw(userList[i].second.c_str());
+
+            }
+
+        }
+
+
+    }
+
+    void removeUser(string oldUser)
+    {
+        int index;
+        bool found = false;
+        for(int i = 0; i < userList.size(); i++)
+        {
+            if(oldUser.compare(userName)==0)
+            {
+                //if you are this user do nothing?
+             }else if(oldUser.compare(userList[i].first)==0)
+             {
+                //if the user is already in our list of conversations
+               index = i;
+                found = true;
+
+
+             }else{
+
+                //userList.push_back(pair<string,string>(newUser,""));
+            }
+
+         }
+
+         if(found)
+         {
+             userList.erase(userList.begin() + index);
+         }
+    }
+
+
+string createMessage(string toSend){
+    return("<msg>"+toSend+"</msg>");
+}
+
+string getUser()
+{
+    displayUserList(1, 1,0);
+    int keyPressed;
+    string message = "";
+    int i = 0;
+    while(true)
+    {
+
+        if ((keyPressed = getch()) == ERR) 
+        {
+            if(updated)
+            {
+                clear();
+                displayUserList(1, 1,i);
+                toggleUpdate(false);
+
+            }
+   
+        }
+        else
+        {
+            if(keyPressed == KEY_DOWN)
+            {
+                if((i+1)>userList.size()-1)
+                {
+
+                }else
+                {
+                    clear();
+                    i++;
+                    displayUserList(1, 1,i);
+                } 
+                
+            }else if(keyPressed == KEY_UP)
+            {
+                
+                if((i-1)<0 )
+                    {
+
+                    }else
+                    {
+                        clear();
+                        i--;
+                        displayUserList(1, 1,i);
                     }
+                
+            }
 
-                    void destroy_win(WINDOW *local_win)
-                    {   
-    /* box(local_win, ' ', ' '); : This won't produce the desired
-     * result of erasing the window. It will leave it's four corners 
-     * and so an ugly remnant of window. 
-     */
-     wborder(local_win, ' ', ' ', ' ',' ',' ',' ',' ',' ');
-    /* The parameters taken are 
-     * 1. win: the window on which to operate
-     * 2. ls: character to be used for the left side of the window 
-     * 3. rs: character to be used for the right side of the window 
-     * 4. ts: character to be used for the top side of the window 
-     * 5. bs: character to be used for the bottom side of the window 
-     * 6. tl: character to be used for the top left corner of the window 
-     * 7. tr: character to be used for the top right corner of the window 
-     * 8. bl: character to be used for the bottom left corner of the window 
-     * 9. br: character to be used for the bottom right corner of the window
-     */
-     wrefresh(local_win);
-     delwin(local_win);
+            else if(keyPressed != '\n')
+            {
+
+            }
+            else
+            {
+                if(userList.size()>0){
+                clear();
+
+                currentConvo = userList[i].first;
+                mode = CONVO;
+                inputPrompt =string("To-User:"+ userList[atoi(message.c_str())].first+":");
+                printw(inputPrompt.c_str());
+                return string("<sendto>"+userList[atoi(message.c_str())].first+"</sendto>");
+            }
+            }
+        }
+
+    }
+}
+
+void displayUserList(int pRow, int pCol, int selected)
+{
+ 
+    int row, col;
+    
+    getmaxyx(stdscr,row,col);
+    int divide = col/3;
+    clear();
+    stringstream str; 
+    int r=2;
+   
+    mvprintw(r++,divide-6,string("  [People Online]").c_str());
+    mvprintw(r++,divide-6,string("(Use The Arrow Keys)").c_str());
+    for(int i = 0; i < userList.size(); i++)
+    {
+        if(i!=selected)
+        {
+        mvprintw(r++,divide,str.str().c_str());
+        printw(string(userList[i].first).c_str());
+        }
+        else
+        {   mvprintw(r++,divide-3,string("-->").c_str());
+            printw(str.str().c_str());
+            printw(string(userList[i].first).c_str());
+            printw(string("<--").c_str());
+        }
+    }
+
+    mvprintw(row-1,col-1,string("").c_str());
+
 }

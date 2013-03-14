@@ -37,32 +37,24 @@ The program key aspects:
 #include <vector>
 #define PORT "3000"   // port we're listening on
 
-    using namespace std;
-    void messageParser(string message, int i);
-    string recieveMessage(int clientSock);
-    void sendLong(long guess, int sock);
-    void sendMessage(string userNameStr, int sock);
-    long recieveNum(int clientSock);
-    bool isclosed(int socket);
-    void showUsers();
-    void sendListOfUsers();
-    void sendLogon(string extractedUserName);
-    void logoutUser(int fd);
-    tr1::unordered_map <string, int> activeUsers;
-    tr1::unordered_map <int, string> activeLogins;
-    vector<string> activeUserKeys;
-    void sendLogoff(string extractedUserName);
-
-
-// get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
+using namespace std;
+    
+//function declarations
+void messageParser(string message, int i);
+string recieveMessage(int clientSock);
+void sendLong(long guess, int sock);
+void sendMessage(string userNameStr, int sock);
+long recieveNum(int clientSock);
+bool isclosed(int socket);
+void showUsers();
+void sendListOfUsers();
+void sendLogon(string extractedUserName);
+void logoutUser(int fd);
+tr1::unordered_map <string, int> activeUsers;
+tr1::unordered_map <int, string> activeLogins;
+vector<string> activeUserKeys;
+void sendLogoff(string extractedUserName);
+void *get_in_addr(struct sockaddr *sa);
 
 int main(void)
 {
@@ -192,6 +184,16 @@ int main(void)
     } // END for(;;)--and you thought it would never end!
     
     return 0;
+}
+
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
 string recieveMessage(int clientSock)
